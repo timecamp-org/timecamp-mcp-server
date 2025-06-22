@@ -142,6 +142,78 @@ class TimeCampAPI {
 			};
 		}
 	}
+
+	async getTasks() {
+		try {
+			// Prepare query parameters
+			const params = new URLSearchParams({
+				ignoreAdminRights: "1"
+			});
+
+			// Make API request
+			const response = await fetch(`${this.baseUrl}/tasks?${params.toString()}`, {
+				method: "GET",
+				headers: this.getHeaders(),
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`TimeCamp API request failed with status ${response.status}: ${errorText}`);
+			}
+
+			const result = await response.json();
+			
+			// Convert object to array for easier processing
+			const tasksArray = Object.values(result as Record<string, unknown>);
+
+			return {
+				success: true,
+				data: tasksArray,
+				message: "Successfully fetched TimeCamp projects and tasks"
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error)
+			};
+		}
+	}
+
+	async deleteTimeEntry(entryId: string) {
+		try {
+			// Prepare request body as URL-encoded form data
+			const requestBody = `id=${entryId}&service=timecamp-mcp`;
+
+			// Make API request
+			const response = await fetch(`${this.baseUrl}/entries`, {
+				method: "DELETE",
+				headers: {
+					"Accept": "application/json",
+					"Authorization": `Bearer ${this.bearerToken}`,
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+				body: requestBody,
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`TimeCamp API request failed with status ${response.status}: ${errorText}`);
+			}
+
+			const result = await response.json();
+
+			return {
+				success: true,
+				data: result,
+				message: `Successfully deleted time entry with ID: ${entryId}`
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error)
+			};
+		}
+	}
 }
 
 // Define our MCP agent with tools
@@ -241,6 +313,90 @@ export class MyMCP extends McpAgent {
 							{
 								type: "text",
 								text: `Error fetching time entries: ${error instanceof Error ? error.message : String(error)}`,
+							},
+						],
+					};
+				}
+			}
+		);
+
+		// TimeCamp get projects and tasks tool
+		this.server.tool(
+			"get_timecamp_tasks",
+			{},
+			async () => {
+				try {
+					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const result = await api.getTasks();
+					
+					if (result.success) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `${result.message}:\n${JSON.stringify(result.data, null, 2)}`,
+								},
+							],
+						};
+					} else {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Error fetching tasks: ${result.error}`,
+								},
+							],
+						};
+					}
+				} catch (error) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error fetching tasks: ${error instanceof Error ? error.message : String(error)}`,
+							},
+						],
+					};
+				}
+			}
+		);
+
+		// TimeCamp delete time entry tool
+		this.server.tool(
+			"delete_timecamp_time_entry",
+			{
+				entryId: z.string().describe("ID of the time entry to delete"),
+			},
+			async ({ entryId }) => {
+				try {
+					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const result = await api.deleteTimeEntry(entryId);
+					
+					if (result.success) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `${result.message} Response: ${JSON.stringify(result.data, null, 2)}`,
+								},
+							],
+						};
+					} else {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Error deleting time entry: ${result.error}`,
+								},
+							],
+						};
+					}
+				} catch (error) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error deleting time entry: ${error instanceof Error ? error.message : String(error)}`,
 							},
 						],
 					};
