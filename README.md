@@ -15,8 +15,8 @@
 ## Example prompt
 
 ```
-Create Timecamp time entries based on these tasks I done. 
-I writ tasks by putting -HH:MM, which is the end time for the task, so each time entry should take from end end time of previous entry.
+Create Timecamp time entries based on these tasks I did. 
+I write tasks by putting -HH:MM, which is the end time for the task, so each time entry should take from end end time of previous entry.
 Try to match timecamp task, so first you have to fetch my timecamp tasks.
 Note should be single sentence in English with 3-12 words.
 Ignore "[minutes:: ...]" as this is estimate.
