@@ -1,6 +1,19 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { Hono } from "hono";
+
+type Bindings = Env;
+
+const app = new Hono<{
+	Bindings: Bindings;
+}>();
+
+type Props = {
+	bearerToken: string;
+};
+
+type State = null;
 
 // TimeCamp API client class
 class TimeCampAPI {
@@ -217,18 +230,11 @@ class TimeCampAPI {
 }
 
 // Define our MCP agent with tools
-export class MyMCP extends McpAgent {
+export class MyMCP extends McpAgent<Bindings, State, Props> {
 	server = new McpServer({
 		name: "TimeCamp MCP Server",
 		version: "1.0.0",
 	});
-
-	private static bearerToken: string = "";
-
-	// Set bearer token statically
-	static setBearerToken(token: string) {
-		MyMCP.bearerToken = token;
-	}
 
 	async init() {
 		// TimeCamp time entry tool
@@ -241,7 +247,7 @@ export class MyMCP extends McpAgent {
 			},
 			async ({ from, to, note }) => {
 				try {
-					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const api = new TimeCampAPI(this.props.bearerToken);
 					const result = await api.createTimeEntry(from, to, note);
 					
 					if (result.success) {
@@ -285,7 +291,7 @@ export class MyMCP extends McpAgent {
 			},
 			async ({ from, to }) => {
 				try {
-					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const api = new TimeCampAPI(this.props.bearerToken);
 					const result = await api.getTimeEntries(from, to, "me", "tags");
 					
 					if (result.success) {
@@ -326,7 +332,7 @@ export class MyMCP extends McpAgent {
 			{},
 			async () => {
 				try {
-					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const api = new TimeCampAPI(this.props.bearerToken);
 					const result = await api.getTasks();
 					
 					if (result.success) {
@@ -369,7 +375,7 @@ export class MyMCP extends McpAgent {
 			},
 			async ({ entryId }) => {
 				try {
-					const api = new TimeCampAPI(MyMCP.bearerToken);
+					const api = new TimeCampAPI(this.props.bearerToken);
 					const result = await api.deleteTimeEntry(entryId);
 					
 					if (result.success) {
@@ -406,31 +412,67 @@ export class MyMCP extends McpAgent {
 	}
 }
 
-export default {
-	fetch(request: Request, env: Env, ctx: ExecutionContext) {
-		const url = new URL(request.url);
+// Simple home page
+app.get("/", async (c) => {
+	return c.html(`
+		<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>TimeCamp MCP Server</title>
+		</head>
+		<body style="font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px;">
+			<h1>TimeCamp MCP Server</h1>
+			<p>This is a Model Context Protocol (MCP) server for TimeCamp integration.</p>
+			<p>To use this server, connect to the <code>/sse</code> endpoint with proper authentication.</p>
+			<h2>Authentication</h2>
+			<p>Include your TimeCamp API token in the Authorization header:</p>
+			<pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">Authorization: Bearer YOUR_TIMECAMP_TOKEN</pre>
+		</body>
+		</html>
+	`);
+});
 
-		// Get bearer token from Authorization header or environment variable
-		let bearerToken = env?.TIMECAMP_TOKEN || process.env?.TIMECAMP_TOKEN;
-		
-		// Check for Authorization header and extract token if present
-		const authHeader = request.headers.get('Authorization');
-		if (authHeader && authHeader.startsWith('Bearer ')) {
-			bearerToken = authHeader.substring(7); // Remove 'Bearer ' prefix
-		}
-		
-		if (bearerToken) {
-			MyMCP.setBearerToken(bearerToken);
-		}
+// Mount the MCP handler with authentication
+app.mount("/", (req: Request, env: Bindings, ctx: ExecutionContext) => {
+	const url = new URL(req.url);
+	
+	// Only handle /sse routes
+	if (!url.pathname.startsWith("/sse")) {
+		// Let Hono handle other routes
+		return app.fetch(req, env, ctx);
+	}
+	
+	// Get bearer token from Authorization header or environment variable
+	const authHeader = req.headers.get("authorization");
+	let bearerToken = env?.TIMECAMP_TOKEN || "";
+	
+	// If Authorization header is present, use it instead
+	if (authHeader) {
+		// Remove "Bearer " prefix if present
+		bearerToken = authHeader.startsWith("Bearer ")
+			? authHeader.substring(7)
+			: authHeader;
+	}
+	
+	// Check if we have a token
+	if (!bearerToken) {
+		return new Response("Unauthorized: No bearer token provided", { status: 401 });
+	}
 
-		if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-			return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
-		}
+	// Set the bearer token in the context props
+	(ctx as any).props = {
+		bearerToken: bearerToken,
+	};
 
-		if (url.pathname === "/mcp") {
-			return MyMCP.serve("/mcp").fetch(request, env, ctx);
-		}
+	// Return the MCP agent response
+	return MyMCP.mount("/sse").fetch(req, env, ctx);
+});
 
-		return new Response("Not found", { status: 404 });
-	},
-};
+// Legacy routes for backward compatibility
+app.get("/mcp", (c: any) => {
+	return c.redirect("/sse", 301);
+});
+
+export default app;

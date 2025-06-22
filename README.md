@@ -10,18 +10,22 @@ Local
 
 ```sh
 pnpm start
-pnpm dlx @modelcontextprotocol/inspector@latest
+npx mcp-remote http://localhost:8787/sse --header "Authorization: Bearer <api_token>"
 ```
 
-Deployment
+Deploy
 
 ```sh
 pnpm dlx wrangler@latest deploy
+pnpm dlx wrangler@latest tail
+npx mcp-remote https://my-mcp-server.timecamp-s-a.workers.dev/sse --header "Authorization: Bearer <api_token>"
 ```
 
-## Not yet implemented
+Test
 
-- Oauth authorization
+```sh
+pnpm dlx @modelcontextprotocol/inspector@latest
+```
 
 ## Connect Claude Desktop to your MCP server
 
@@ -46,9 +50,21 @@ Update with this configuration:
       "env": {
         "AUTH_HEADER": "Bearer <auth-token>"
       }
-    }
+    },
+    "timecamp_url": { // if MCP client supports url
+      "url": "https://my-mcp-server.timecamp-s-a.workers.dev/sse",
+      "headers": {
+        "Authorization": "Bearer <auth-token>...."
+      }
+    },
   }
 }
 ```
 
 Restart Claude and you should see the tools become available. 
+
+If you have MacOS Claude Desktop - 'Server transport closed unexpectedly' see https://github.com/modelcontextprotocol/servers/issues/1748#issuecomment-2896004925.
+
+## Not yet implemented
+
+- Oauth authorization (https://github.com/huanshenyi/mcp-server-bearer-auth/tree/main)
