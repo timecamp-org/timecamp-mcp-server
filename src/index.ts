@@ -51,7 +51,7 @@ class TimeCampAPI {
 		return dateTime;
 	}
 
-	async createTimeEntry(from: string, to: string, note: string) {
+	async createTimeEntry(from: string, to: string, note: string, task_id?: string) {
 		try {
 			// Format and validate dates
 			const startTime = this.formatDateForAPI(from);
@@ -66,7 +66,7 @@ class TimeCampAPI {
 			const date = from.split(' ')[0];
 
 			// Prepare request body
-			const requestBody = {
+			const requestBody: any = {
 				get_entries: 0,
 				date: date,
 				start_time: startTime,
@@ -75,6 +75,11 @@ class TimeCampAPI {
 				note: note,
 				service: 'timecamp-mcp',
 			};
+
+			// Add task_id if provided
+			if (task_id) {
+				requestBody.task_id = task_id;
+			}
 
 			// Make API request
 			const response = await fetch(`${this.baseUrl}/entries`, {
@@ -192,6 +197,50 @@ class TimeCampAPI {
 		}
 	}
 
+	async getTimeEntryById(entryId: string, date?: string) {
+		try {
+			let fromDate: string;
+			let toDate: string;
+
+			if (date) {
+				// Use provided date
+				fromDate = date;
+				toDate = date;
+			} else {
+				// Use last 30 days
+				const today = new Date();
+				const thirtyDaysAgo = new Date(today);
+				thirtyDaysAgo.setDate(today.getDate() - 30);
+				
+				fromDate = thirtyDaysAgo.toISOString().split('T')[0];
+				toDate = today.toISOString().split('T')[0];
+			}
+
+			// Fetch time entries for the specified date range
+			const entriesResult = await this.getTimeEntries(fromDate, toDate, "me", "tags");
+			if (!entriesResult.success) {
+				throw new Error(`Could not fetch time entries: ${entriesResult.error}`);
+			}
+
+			// Find the specific entry by ID
+			const targetEntry = (entriesResult.data as any[]).find(entry => entry.id === parseInt(entryId));
+			if (!targetEntry) {
+				throw new Error(`Time entry with ID ${entryId} not found in the specified date range`);
+			}
+
+			return {
+				success: true,
+				data: targetEntry,
+				message: `Successfully found time entry with ID ${entryId}`
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error)
+			};
+		}
+	}
+
 	async deleteTimeEntry(entryId: string) {
 		try {
 			// Prepare request body as URL-encoded form data
@@ -227,6 +276,123 @@ class TimeCampAPI {
 			};
 		}
 	}
+
+	async updateTimeEntry(entryId: string, from?: string, to?: string, note?: string, task_id?: string) {
+		try {
+			// Prepare request body with required fields
+			const requestBody: any = {
+				id: parseInt(entryId),
+				service: 'timecamp-mcp',
+			};
+
+			let duration = 0;
+			let timeUpdated = false;
+			let finalStartTime = from;
+			let finalEndTime = to;
+
+			// Handle time updates
+			if (from || to) {
+				// Validate time format (HH:MM) for provided times
+				const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+				if (from && !timeRegex.test(from)) {
+					throw new Error("Start time format must be HH:MM (e.g., 15:28)");
+				}
+				if (to && !timeRegex.test(to)) {
+					throw new Error("End time format must be HH:MM (e.g., 15:28)");
+				}
+
+				// If only one time is provided, fetch existing entry to get the other time
+				if ((from && !to) || (!from && to)) {
+					// Fetch the existing entry details (searches last 30 days if not found today)
+					const entryResult = await this.getTimeEntryById(entryId);
+					if (!entryResult.success) {
+						throw new Error(`Could not fetch existing time entry: ${entryResult.error}`);
+					}
+
+					const existingEntry = entryResult.data;
+
+					// Extract existing times (format: "HH:MM:SS")
+					const existingStartTime = existingEntry.start_time?.substring(0, 5); // Get HH:MM part
+					const existingEndTime = existingEntry.end_time?.substring(0, 5); // Get HH:MM part
+
+					// Use existing times for missing values
+					if (!from && to) {
+						finalStartTime = existingStartTime;
+						finalEndTime = to;
+					} else if (from && !to) {
+						finalStartTime = from;
+						finalEndTime = existingEndTime;
+					}
+
+					if (!finalStartTime || !finalEndTime) {
+						throw new Error("Could not determine existing start or end time from the current entry");
+					}
+				}
+
+				// Now we should have both start and end times
+				if (finalStartTime && finalEndTime) {
+					// Add seconds if not present (API expects HH:MM:SS)
+					const startTimeFormatted = finalStartTime.includes(':') && finalStartTime.split(':').length === 2 ? finalStartTime + ':00' : finalStartTime;
+					const endTimeFormatted = finalEndTime.includes(':') && finalEndTime.split(':').length === 2 ? finalEndTime + ':00' : finalEndTime;
+
+					// Calculate duration (assuming same day)
+					const startMinutes = parseInt(finalStartTime.split(':')[0]) * 60 + parseInt(finalStartTime.split(':')[1]);
+					const endMinutes = parseInt(finalEndTime.split(':')[0]) * 60 + parseInt(finalEndTime.split(':')[1]);
+					duration = (endMinutes - startMinutes) * 60; // Convert to seconds
+
+					if (duration <= 0) {
+						throw new Error("End time must be after start time");
+					}
+
+					requestBody.start_time = startTimeFormatted;
+					requestBody.end_time = endTimeFormatted;
+					requestBody.duration = duration;
+					timeUpdated = true;
+				}
+			}
+
+			if (note !== undefined) {
+				requestBody.note = note;
+			}
+
+			if (task_id) {
+				requestBody.task_id = parseInt(task_id);
+			}
+
+			// Make API request
+			const response = await fetch(`${this.baseUrl}/entries`, {
+				method: "PUT",
+				headers: this.getHeaders(),
+				body: JSON.stringify(requestBody),
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`TimeCamp API request failed with status ${response.status}: ${errorText}`);
+			}
+
+			const result = await response.json();
+			
+			// Create appropriate success message
+			let message = `Successfully updated time entry ID ${entryId}`;
+			if (timeUpdated) {
+				message += ` with time from ${finalStartTime} to ${finalEndTime} (${Math.floor(duration / 60)} minutes)`;
+			}
+			message += '.';
+
+			return {
+				success: true,
+				duration: timeUpdated ? Math.floor(duration / 60) : undefined, // duration in minutes if updated
+				data: result,
+				message: message
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error)
+			};
+		}
+	}
 }
 
 // Define our MCP agent with tools
@@ -244,11 +410,12 @@ export class MyMCP extends McpAgent<Bindings, State, Props> {
 				from: z.string().describe("Start time in format YYYY-MM-DD HH:MM (e.g. 2025-06-22 13:28)"),
 				to: z.string().describe("End time in format YYYY-MM-DD HH:MM (e.g. 2025-06-22 15:28)"),
 				note: z.string().describe("Note/description for the time entry"),
+				task_id: z.string().optional().describe("Optional TimeCamp task ID to associate with the time entry"),
 			},
-			async ({ from, to, note }) => {
+			async ({ from, to, note, task_id }) => {
 				try {
 					const api = new TimeCampAPI(this.props.bearerToken);
-					const result = await api.createTimeEntry(from, to, note);
+					const result = await api.createTimeEntry(from, to, note, task_id);
 					
 					if (result.success) {
 						return {
@@ -409,6 +576,53 @@ export class MyMCP extends McpAgent<Bindings, State, Props> {
 				}
 			}
 		);
+
+		// TimeCamp update time entry tool
+		this.server.tool(
+			"update_timecamp_time_entry",
+			{
+				entryId: z.string().describe("ID of the time entry to update"),
+				from: z.string().optional().describe("Optional Start time in format HH:MM (e.g. 13:28)"),
+				to: z.string().optional().describe("Optional End time in format HH:MM (e.g. 15:28)"),
+				note: z.string().optional().describe("Optional Note/description for the time entry"),
+				task_id: z.string().optional().describe("Optional TimeCamp task ID to associate with the time entry"),
+			},
+			async ({ entryId, from, to, note, task_id }) => {
+				try {
+					const api = new TimeCampAPI(this.props.bearerToken);
+					const result = await api.updateTimeEntry(entryId, from, to, note, task_id);
+					
+					if (result.success) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `${result.message} Response: ${JSON.stringify(result.data, null, 2)}`,
+								},
+							],
+						};
+					} else {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Error updating time entry: ${result.error}`,
+								},
+							],
+						};
+					}
+				} catch (error) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error updating time entry: ${error instanceof Error ? error.message : String(error)}`,
+							},
+						],
+					};
+				}
+			}
+		);
 	}
 }
 
@@ -426,23 +640,50 @@ app.get("/", async (c) => {
 			<h1>TimeCamp MCP Server</h1>
 			<p>This is a Model Context Protocol (MCP) server for TimeCamp integration.</p>
 			<p>To use this server, connect to the <code>/sse</code> endpoint with proper authentication.</p>
+			
+			<h2>Available Tools</h2>
+			<p>This MCP server provides the following tools for TimeCamp integration:</p>
+			<ul style="line-height: 1.6;">
+				<li><strong>add_timecamp_time_entry</strong> - Create a new time entry with start time, end time, note, and optional task</li>
+				<li><strong>get_timecamp_time_entries</strong> - Retrieve time entries for a specified date range</li>
+				<li><strong>get_timecamp_tasks</strong> - Fetch all available TimeCamp projects and tasks</li>
+				<li><strong>delete_timecamp_time_entry</strong> - Delete a specific time entry by ID</li>
+				<li><strong>update_timecamp_time_entry</strong> - Update an existing time entry (time, note, or task assignment)</li>
+			</ul>
 			<h2>Authentication</h2>
 			<p>Include your TimeCamp API token in the Authorization header:</p>
 			<pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">Authorization: Bearer YOUR_TIMECAMP_TOKEN</pre>
+			
+			<h2>Configuration Example</h2>
+			<p>To configure this MCP server in your client application, add the following configuration:</p>
+			<pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto;">{
+  "mcpServers": {
+    "timecamp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://my-mcp-server.timecamp-s-a.workers.dev/sse",
+        "--header",
+        "Authorization:\${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer &lt;auth-token&gt;"
+      }
+    }
+  }
+}</pre>
+			<p><strong>Note:</strong> Replace <code>&lt;auth-token&gt;</code> with your actual TimeCamp API token.</p>
 		</body>
 		</html>
 	`);
 });
 
 // Mount the MCP handler with authentication
-app.mount("/", (req: Request, env: Bindings, ctx: ExecutionContext) => {
-	const url = new URL(req.url);
-	
-	// Only handle /sse routes
-	if (!url.pathname.startsWith("/sse")) {
-		// Let Hono handle other routes
-		return app.fetch(req, env, ctx);
-	}
+app.all("/sse/*", async (c) => {
+	const req = c.req.raw;
+	const env = c.env;
+	const ctx = c.executionCtx;
 	
 	// Get bearer token from Authorization header or environment variable
 	const authHeader = req.headers.get("authorization");

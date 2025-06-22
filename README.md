@@ -68,3 +68,4 @@ If you have MacOS Claude Desktop - 'Server transport closed unexpectedly' see ht
 ## Not yet implemented
 
 - Oauth authorization (https://github.com/huanshenyi/mcp-server-bearer-auth/tree/main)
+- Problem with MCP using URL in Cursor
