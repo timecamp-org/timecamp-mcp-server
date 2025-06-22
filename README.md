@@ -4,6 +4,14 @@
 - Why hosted not local only? Easier to use, users don't need to install it.
 - Why Cloudflare Workers? Cheap & easy.
 
+### This MCP server provides the following tools for TimeCamp integration:
+
+- **add_timecamp_time_entry** - Create a new time entry with start time, end time, note, and optional task
+- **get_timecamp_time_entries** - Retrieve time entries for a specified date range
+- **get_timecamp_tasks** - Fetch all available TimeCamp projects and tasks
+- **delete_timecamp_time_entry** - Delete a specific time entry by ID
+- **update_timecamp_time_entry** - Update an existing time entry (time, note, or task assignment)
+
 ## Setup & run
 
 Local
