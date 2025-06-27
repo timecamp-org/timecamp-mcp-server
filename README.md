@@ -4,6 +4,8 @@
 - Why hosted and not local only? Easier to use, users don't need to install it.
 - Why Cloudflare Workers? Cheap & easy.
 
+Hosted version is available at: https://my-mcp-server.timecamp-s-a.workers.dev
+
 ### This MCP server provides the following tools for TimeCamp integration:
 
 - **add_timecamp_time_entry** - Create a new time entry with start time, end time, note, and optional task
@@ -29,7 +31,7 @@ Ignore "[minutes:: ...]" as this is estimate.
 - [x] -15:40 I don't remember [completion:: 2025-06-21] 
 - [x] -17:09 #tech Client - database connection problem [[(process) Technical support]] [minutes:: 15] [completion:: 2025-06-21]
 - [x] -17:35 break [completion:: 2025-06-21]
-- [x] -19:17 #tech Client [[(project) Client]] [[(process) Technical support]] [minutes:: 10] [completion:: 2025-06-21] 	- - [x] -19:21 (evening) Fill timesheet [completion:: 2025-06-21]
+- [x] -19:17 #tech Client [[(project) Client]] [[(process) Technical support]] [minutes:: 10] [completion:: 2025-06-21]	- - [x] -19:21 (evening) Fill timesheet [completion:: 2025-06-21]
 ```
 
 ## Setup & run
@@ -38,7 +40,6 @@ Local
 
 ```sh
 pnpm start
-npx mcp-remote http://localhost:8787/sse --header "Authorization: Bearer <api_token>"
 ```
 
 Deploy
@@ -46,12 +47,14 @@ Deploy
 ```sh
 pnpm dlx wrangler@latest deploy
 pnpm dlx wrangler@latest tail
-npx mcp-remote https://my-mcp-server.timecamp-s-a.workers.dev/sse --header "Authorization: Bearer <api_token>"
+
 ```
 
 Test
 
 ```sh
+npx mcp-remote http://localhost:8787/sse --header "Authorization: Bearer <api_token>"
+npx mcp-remote https://my-mcp-server.timecamp-s-a.workers.dev/sse --header "Authorization: Bearer <api_token>"
 pnpm dlx @modelcontextprotocol/inspector@latest
 ```
 
@@ -96,4 +99,4 @@ If you have MacOS Claude Desktop - 'Server transport closed unexpectedly' see ht
 ## Not yet implemented
 
 - Oauth authorization (https://github.com/huanshenyi/mcp-server-bearer-auth/tree/main)
-- Problem with MCP using URL in Cursor
+- Problem with MCP using URL in Cursor after fixing problem with Cloudflare workers not using received authorization header
