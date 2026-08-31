@@ -1,3 +1,8 @@
+> [!CAUTION]
+> It's not longer maitaned. Please use our official MCP [https://docs.timecamp.com/mcp-server](https://docs.timecamp.com/mcp-server)
+> 
+> Developers building their own MCP server can still use this repository as a template or starting point.
+
 # TimeCamp MCP Server
 
 - Why TS not Python? Official client, more materials, support for Cloudflare workers.
